@@ -1,0 +1,25 @@
+{
+  "name": "agent-zero-desktop",
+  "version": "1.0.0",
+  "description": "Agent Zero Desktop Application",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:debug": "tauri build --debug",
+    "build:python": "python scripts/build_python.py",
+    "build:python:windows": "python scripts/build_python.py --platform windows",
+    "build:python:macos": "python scripts/build_python.py --platform macos",
+    "build:python:linux": "python scripts/build_python.py --platform linux",
+    "build:all": "npm run build:python && npm run tauri:build",
+    "clean": "rm -rf src-tauri/target python-dist",
+    "icons": "tauri icon src-tauri/icons/icon.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  }
+}

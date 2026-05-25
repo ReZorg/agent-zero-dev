@@ -1,0 +1,29 @@
+# Desktop app build artifacts
+node_modules/
+python-dist/
+src-tauri/target/
+src-tauri/binaries/
+
+# PyInstaller artifacts
+*.spec.bak
+build/
+dist/
+
+# Tauri dev artifacts
+.tauri/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local

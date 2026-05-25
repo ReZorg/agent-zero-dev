@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Zero - Loading</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .logo {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 2rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .logo svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            font-size: 1rem;
+            color: #888;
+            margin-bottom: 3rem;
+        }
+        
+        .loader {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(102, 126, 234, 0.2);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .status {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+        
+        .status-detail {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+        
+        .error {
+            display: none;
+            color: #ff6b6b;
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 8px;
+            max-width: 400px;
+        }
+        
+        .error.show {
+            display: block;
+        }
+        
+        .retry-btn {
+            margin-top: 1rem;
+            padding: 0.5rem 1.5rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        
+        .retry-btn:hover {
+            background: #5a6fd6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="45" stroke="url(#gradient)" stroke-width="2" fill="none"/>
+                <circle cx="50" cy="50" r="30" stroke="url(#gradient)" stroke-width="1.5" fill="none" opacity="0.6"/>
+                <circle cx="50" cy="50" r="15" fill="url(#gradient)" opacity="0.8"/>
+                <circle cx="50" cy="25" r="5" fill="#667eea"/>
+                <circle cx="71" cy="62" r="5" fill="#764ba2"/>
+                <circle cx="29" cy="62" r="5" fill="#667eea"/>
+                <defs>
+                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#667eea"/>
+                        <stop offset="100%" stop-color="#764ba2"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+        
+        <h1>Agent Zero</h1>
+        <p class="subtitle">Autonomous AI Agent Framework</p>
+        
+        <div class="loader">
+            <div class="spinner"></div>
+            <p class="status" id="status">Starting backend...</p>
+            <p class="status-detail" id="status-detail">Please wait while Agent Zero initializes</p>
+        </div>
+        
+        <div class="error" id="error">
+            <p id="error-message">Failed to start backend</p>
+            <button class="retry-btn" onclick="location.reload()">Retry</button>
+        </div>
+    </div>
+    
+    <script type="module">
+        const statusEl = document.getElementById('status');
+        const statusDetailEl = document.getElementById('status-detail');
+        const errorEl = document.getElementById('error');
+        const errorMsgEl = document.getElementById('error-message');
+        
+        const statusMessages = [
+            'Starting backend...',
+            'Loading dependencies...',
+            'Initializing framework...',
+            'Starting server...',
+            'Almost ready...'
+        ];
+        
+        let messageIndex = 0;
+        let checkCount = 0;
+        const maxChecks = 240; // 2 minutes at 500ms intervals
+        
+        function updateStatus(message, detail = '') {
+            statusEl.textContent = message;
+            if (detail) statusDetailEl.textContent = detail;
+        }
+        
+        function showError(message) {
+            errorMsgEl.textContent = message;
+            errorEl.classList.add('show');
+            document.querySelector('.loader').style.display = 'none';
+        }
+        
+        async function checkHealth() {
+            try {
+                const response = await fetch('http://localhost:50001/api/health', {
+                    method: 'GET',
+                    mode: 'cors',
+                });
+                
+                if (response.ok) {
+                    updateStatus('Ready!', 'Redirecting...');
+                    // Redirect to the main application
+                    window.location.href = 'http://localhost:50001/';
+                    return true;
+                }
+            } catch (e) {
+                // Backend not ready yet
+            }
+            
+            return false;
+        }
+        
+        async function pollBackend() {
+            checkCount++;
+            
+            // Update status message periodically
+            if (checkCount % 10 === 0 && messageIndex < statusMessages.length - 1) {
+                messageIndex++;
+                updateStatus(statusMessages[messageIndex]);
+            }
+            
+            // Check if we've exceeded max attempts
+            if (checkCount >= maxChecks) {
+                showError('Backend failed to start within 2 minutes. Please check logs.');
+                return;
+            }
+            
+            const ready = await checkHealth();
+            if (!ready) {
+                setTimeout(pollBackend, 500);
+            }
+        }
+        
+        // Start polling
+        pollBackend();
+    </script>
+</body>
+</html>
