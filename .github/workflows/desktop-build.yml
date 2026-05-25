@@ -154,8 +154,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -181,7 +179,7 @@ jobs:
 
       - name: Install Node.js dependencies
         working-directory: desktop
-        run: npm ci
+        run: npm install
 
       - name: Update version in tauri.conf.json
         working-directory: desktop/src-tauri
