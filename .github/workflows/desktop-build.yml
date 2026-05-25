@@ -209,18 +209,18 @@ jobs:
           npm run tauri build -- --target ${{ matrix.rust_target }}
 
       # macOS specific: Sign and notarize
-      - name: Sign macOS app
-        if: matrix.platform == 'macos' || matrix.platform == 'macos-arm'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        if: env.APPLE_CERTIFICATE != ''
-        run: |
-          echo "macOS signing would be performed here"
+#      - name: Sign macOS app
+#        if: matrix.platform == 'macos' || matrix.platform == 'macos-arm'
+#        env:
+#          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+#          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+#          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+#          APPLE_ID: ${{ secrets.APPLE_ID }}
+#          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+#          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+#        if: env.APPLE_CERTIFICATE != ''
+#        run: |
+#          echo "macOS signing would be performed here"
           # Signing code would go here when certificates are available
 
       # Windows specific: Sign with certificate
@@ -229,7 +229,7 @@ jobs:
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        if: env.WINDOWS_CERTIFICATE != ''
+#        if: env.WINDOWS_CERTIFICATE != ''
         run: |
           echo "Windows signing would be performed here"
           # Signing code would go here when certificates are available
