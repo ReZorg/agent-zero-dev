@@ -36,6 +36,12 @@ def initialize():
     parser.add_argument(
         "--development", type=bool, default=False, help="Development mode"
     )
+    parser.add_argument(
+        "--desktop-mode",
+        action="store_true",
+        default=False,
+        help="Desktop application mode (disables browser launch, enables IPC signals)",
+    )
 
     known, unknown = parser.parse_known_args()
     args = vars(known)
@@ -60,8 +66,13 @@ def is_dockerized() -> bool:
     return bool(get_arg("dockerized"))
 
 
+def is_desktop_mode() -> bool:
+    """Check if running in desktop application mode."""
+    return bool(get_arg("desktop-mode") or get_arg("desktop_mode"))
+
+
 def is_development() -> bool:
-    return not is_dockerized()
+    return not is_dockerized() and not is_desktop_mode()
 
 
 def get_local_url():

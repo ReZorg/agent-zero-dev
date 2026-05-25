@@ -284,6 +284,9 @@ def wait_for_health(host: str, port: int):
             with urllib.request.urlopen(url, timeout=2) as resp:
                 if resp.status == 200:
                     PrintStyle().print("Agent Zero is running.")
+                    # Emit desktop-mode ready signal for Tauri sidecar detection
+                    if runtime.is_desktop_mode():
+                        print("DESKTOP_READY", flush=True)
                     return
         except Exception:
             pass

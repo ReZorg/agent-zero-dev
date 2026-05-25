@@ -1,0 +1,331 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g., 1.0.0)"
+        required: false
+        type: string
+      platforms:
+        description: "Platforms to build (comma-separated: windows,macos,linux)"
+        required: false
+        default: "windows,macos,linux"
+        type: string
+      create_release:
+        description: "Create GitHub release"
+        required: false
+        default: true
+        type: boolean
+
+env:
+  APP_NAME: agent-zero
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+permissions:
+  contents: write
+
+jobs:
+  # ============================================================================
+  # Determine build matrix based on inputs
+  # ============================================================================
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#desktop-v}"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="0.0.0-dev.$(date +%Y%m%d%H%M%S)"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      - name: Determine build matrix
+        id: matrix
+        run: |
+          PLATFORMS="${{ github.event.inputs.platforms || 'windows,macos,linux' }}"
+          
+          # Build matrix JSON
+          MATRIX='{"include":['
+          FIRST=true
+          
+          if [[ "$PLATFORMS" == *"windows"* ]]; then
+            if [[ "$FIRST" != "true" ]]; then MATRIX="$MATRIX,"; fi
+            MATRIX="$MATRIX"'{"os":"windows-latest","platform":"windows","rust_target":"x86_64-pc-windows-msvc"}'
+            FIRST=false
+          fi
+          
+          if [[ "$PLATFORMS" == *"macos"* ]]; then
+            if [[ "$FIRST" != "true" ]]; then MATRIX="$MATRIX,"; fi
+            MATRIX="$MATRIX"'{"os":"macos-latest","platform":"macos","rust_target":"x86_64-apple-darwin"}'
+            FIRST=false
+            MATRIX="$MATRIX"',{"os":"macos-latest","platform":"macos-arm","rust_target":"aarch64-apple-darwin"}'
+          fi
+          
+          if [[ "$PLATFORMS" == *"linux"* ]]; then
+            if [[ "$FIRST" != "true" ]]; then MATRIX="$MATRIX,"; fi
+            MATRIX="$MATRIX"'{"os":"ubuntu-22.04","platform":"linux","rust_target":"x86_64-unknown-linux-gnu"}'
+            FIRST=false
+          fi
+          
+          MATRIX="$MATRIX]}"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Build matrix: $MATRIX"
+
+  # ============================================================================
+  # Build Python backend with PyInstaller
+  # ============================================================================
+  build-python:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller>=6.0.0
+          pip install -r requirements.txt
+          pip install -r requirements2.txt
+
+      - name: Build Python backend
+        working-directory: desktop
+        run: |
+          python scripts/build_python.py --platform ${{ matrix.platform == 'macos-arm' && 'macos' || matrix.platform }}
+
+      - name: Upload Python bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-bundle-${{ matrix.platform }}-${{ matrix.rust_target }}
+          path: desktop/src-tauri/binaries/
+          retention-days: 1
+
+  # ============================================================================
+  # Build Tauri desktop application
+  # ============================================================================
+  build-tauri:
+    needs: [prepare, build-python]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Python bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: python-bundle-${{ matrix.platform }}-${{ matrix.rust_target }}
+          path: desktop/src-tauri/binaries/
+
+      - name: Make sidecar executable (Unix)
+        if: matrix.platform != 'windows'
+        run: |
+          chmod +x desktop/src-tauri/binaries/agent-zero-backend-* || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libayatana-appindicator3-dev
+
+      - name: Install Node.js dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Update version in tauri.conf.json
+        working-directory: desktop/src-tauri
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          if command -v jq &> /dev/null; then
+            jq --arg v "$VERSION" '.version = $v' tauri.conf.json > tauri.conf.json.tmp
+            mv tauri.conf.json.tmp tauri.conf.json
+          else
+            # Fallback for Windows
+            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" tauri.conf.json || true
+          fi
+
+      - name: Copy WebUI assets
+        run: |
+          mkdir -p desktop/src
+          cp -r webui/* desktop/src/
+
+      - name: Build Tauri app
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          npm run tauri build -- --target ${{ matrix.rust_target }}
+
+      # macOS specific: Sign and notarize
+      - name: Sign macOS app
+        if: matrix.platform == 'macos' || matrix.platform == 'macos-arm'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          echo "macOS signing would be performed here"
+          # Signing code would go here when certificates are available
+
+      # Windows specific: Sign with certificate
+      - name: Sign Windows app
+        if: matrix.platform == 'windows'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        if: env.WINDOWS_CERTIFICATE != ''
+        run: |
+          echo "Windows signing would be performed here"
+          # Signing code would go here when certificates are available
+
+      - name: List build artifacts
+        run: |
+          echo "=== Build artifacts ==="
+          find desktop/src-tauri/target -name "*.dmg" -o -name "*.app" -o -name "*.msi" -o -name "*.exe" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" 2>/dev/null || true
+        shell: bash
+
+      - name: Upload Tauri artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.rust_target }}
+          path: |
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.dmg
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.app
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.msi
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.exe
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.deb
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.AppImage
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.rpm
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.tar.gz
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**/*.sig
+          retention-days: 7
+
+  # ============================================================================
+  # Create GitHub Release with all artifacts
+  # ============================================================================
+  release:
+    needs: [prepare, build-tauri]
+    if: github.event_name == 'push' || github.event.inputs.create_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: desktop-*
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( \
+            -name "*.dmg" -o \
+            -name "*.msi" -o \
+            -name "*.exe" -o \
+            -name "*.deb" -o \
+            -name "*.AppImage" -o \
+            -name "*.rpm" -o \
+            -name "*.tar.gz" -o \
+            -name "*.sig" \
+          \) -exec cp {} release-assets/ \;
+          
+          echo "=== Release assets ==="
+          ls -la release-assets/
+
+      - name: Generate update manifest
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          cat > release-assets/latest.json << EOF
+          {
+            "version": "$VERSION",
+            "pub_date": "$DATE",
+            "notes": "Agent Zero Desktop v$VERSION",
+            "platforms": {}
+          }
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-v${{ needs.prepare.outputs.version }}
+          name: Agent Zero Desktop v${{ needs.prepare.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # Cleanup old artifacts
+  # ============================================================================
+  cleanup:
+    needs: [release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Python bundle artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: python-bundle-*
+          failOnError: false
