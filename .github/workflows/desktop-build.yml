@@ -183,6 +183,7 @@ jobs:
 
       - name: Update version in tauri.conf.json
         working-directory: desktop/src-tauri
+        shell: bash
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
           if command -v jq &> /dev/null; then
@@ -194,6 +195,7 @@ jobs:
           fi
 
       - name: Copy WebUI assets
+        shell: bash
         run: |
           mkdir -p desktop/src
           cp -r webui/* desktop/src/
